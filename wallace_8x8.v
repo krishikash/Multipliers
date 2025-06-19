@@ -1,110 +1,147 @@
-module wallace_multiplier_8x8 (
-    input  [7:0] A,
-    input  [7:0] B,
-    output [15:0] P
-);
+`timescale 1ns / 1ps
 
-    wire [7:0] pp[7:0]; // Partial products
-    genvar i, j;
+module wallace_8x8(m,n,p);
+    parameter width = 8;
+    input [width-1:0] n,m;
+    output [width*2:0] p;
+   
+	 wire [(width**2)-1:0] pp_sig;
+	 wire [62:0] c;
+	 wire [52:0] s;
+	 
+	genvar j,k;
+   generate
+      for (j=0; j < width; j=j+1) 
+      begin: outer_loop
+         for (k=0; k < width; k=k+1) 
+         begin: inner_loop
+            assign pp_sig[8*j+k] = m[j] & n[k];
+         end
+      end
+   endgenerate
+	 
+	// Level 1 -stage 1
+	half_adder HA1_l1 (pp_sig[1],pp_sig[8],s[0],c[0]);
+	
+	generate
+      for (j=0; j< 6; j=j+1) 
+      begin: l1_s1
+         full_adder FA1_l1(pp_sig[2+j],pp_sig[9+j],pp_sig[16+j],s[1+j],c[1+j]);
+      end
+   endgenerate
+	 
+	half_adder HA2_l1 (pp_sig[15],pp_sig[22],s[7],c[7]);
+	
+	//level 1 -stage 2
+	half_adder HA3_l1 (pp_sig[25],pp_sig[32],s[8],c[8]);
+	
+	generate
+      for (j=0; j< 6; j=j+1) 
+      begin: l1_s2
+         full_adder FA1_l1(pp_sig[26+j],pp_sig[33+j],pp_sig[40+j],s[9+j],c[9+j]);
+      end
+   endgenerate
+	 
+	half_adder HA4_l1 (pp_sig[39],pp_sig[46],s[15],c[15]);
+	
+	//level 2 -stage 1
+	half_adder HA1_l2 (s[1],c[0],s[16],c[16]);
+	full_adder FA1_l2(s[2],c[1],pp_sig[24],s[17],c[17]);
+	generate
+      for (j=0; j< 5; j=j+1) 
+      begin: l2_s1
+         full_adder FA2_l2(s[3+j],c[2+j],s[8+j],s[18+j],c[18+j]);
+      end
+   endgenerate
+	 
+	full_adder FA3_l2(pp_sig[23],c[7],s[13],s[23],c[23]);
+	//level 2 -stage 2
+	
+	half_adder HA2_l2 (c[9],pp_sig[48],s[24],c[24]);
+	
+	generate
+      for (j=0; j< 6; j=j+1) 
+      begin: l2_s2
+         full_adder FA4_l2(c[10+j],pp_sig[49+j],pp_sig[56+j],s[25+j],c[25+j]);
+      end
+   endgenerate
+	 
+	half_adder HA3_l2 (pp_sig[55],pp_sig[62],s[31],c[31]);
+	
+	//level 3 -stage 1
+	half_adder HA1_l3 (s[17],c[16],s[32],c[32]);
+	half_adder HA2_l3 (s[18],c[17],s[33],c[33]);
+	full_adder FA1_l3(s[19],c[18],c[8],s[34],c[34]);
+	generate
+      for (j=0; j< 4; j=j+1) 
+      begin: l3_s1
+         full_adder FA2_l3(s[20+j],c[19+j],s[24+j],s[35+j],c[35+j]);
+      end
+   endgenerate
+	full_adder FA3_l3(s[14],c[23],s[28],s[39],c[39]);
+	half_adder HA3_l3 (s[15],s[29],s[40],c[40]);
+	half_adder HA4_l3 (pp_sig[47],s[30],s[41],c[41]);
+	
+	//level 4 -stage 1
+	assign p[0] = pp_sig[0];
+	assign p[1] = s[0];
+	assign p[2] = s[16];
+	assign p[3] = s[32];
+	
+	generate
+      for (j=0; j< 3; j=j+1) 
+      begin: l4_ha
+         half_adder HA1_l4 (s[33+j],c[32+j],s[42+j],c[42+j]);
+      end
+   endgenerate
+	
+	generate
+      for (j=0; j<6 ; j=j+1) 
+      begin: l4_fa
+         full_adder FA1_l4(c[24+j],s[36+j],c[35+j],s[45+j],c[45+j]);
+      end
+   endgenerate
+	full_adder FA2_l4(c[30],s[31],c[41],s[51],c[51]);
+	half_adder HA2_l4 (c[31],pp_sig[63],s[52],c[52]);
+	
+	// //level 5 -stage 1
+	assign p[4] = s[42];
+	half_adder HA1_l5 (s[43],c[42],p[5],c[53]);
+	generate
+      for (j=0; j<9 ; j=j+1) 
+      begin: l5_fa
+         full_adder FA1_l5(s[44+j],c[43+j],c[53+j],p[6+j],c[54+j]);
+      end
+   endgenerate
+	half_adder HA2_l5 (c[52],c[62],p[15],p[16]);
+endmodule
 
-    // Generate Partial Products
-    generate
-        for (i = 0; i < 8; i = i + 1) begin : gen_pp
-            for (j = 0; j < 8; j = j + 1) begin : gen_pp_bits
-                assign pp[i][j] = A[j] & B[i];
-            end
-        end
-    endgenerate
 
-    // Wires for intermediate sums and carries
-    wire s11, c11, s12, c12, s13, c13, s14, c14, s15, c15, s16, c16, s17, c17;
-    wire s21, c21, s22, c22, s23, c23, s24, c24, s25, c25;
-    wire s31, c31, s32, c32, s33, c33;
-    wire s41, c41, s42, c42;
-    wire s51, c51;
-
-    // Stage 1
-    assign P[0] = pp[0][0];
-
-    half_adder ha11(pp[0][1], pp[1][0], s11, c11);
-    full_adder fa12(pp[0][2], pp[1][1], pp[2][0], s12, c12);
-    full_adder fa13(pp[0][3], pp[1][2], pp[2][1], s13, c13);
-    full_adder fa14(pp[0][4], pp[1][3], pp[2][2], s14, c14);
-    full_adder fa15(pp[0][5], pp[1][4], pp[2][3], s15, c15);
-    full_adder fa16(pp[0][6], pp[1][5], pp[2][4], s16, c16);
-    full_adder fa17(pp[0][7], pp[1][6], pp[2][5], s17, c17);
-
-    // Stage 2
-    full_adder fa21(s12, pp[3][0], c11, s21, c21);
-    full_adder fa22(s13, pp[3][1], c12, s22, c22);
-    full_adder fa23(s14, pp[3][2], c13, s23, c23);
-    full_adder fa24(s15, pp[3][3], c14, s24, c24);
-    full_adder fa25(s16, pp[3][4], c15, s25, c25);
-    full_adder fa26(s17, pp[3][5], c16, s31, c31);
-    full_adder fa27(pp[1][7], pp[2][6], pp[3][6], s32, c32);
-    half_adder  ha28(pp[3][7], c17, s33, c33);
-
-    // Stage 3
-    full_adder fa31(s21, pp[4][0], pp[5][0], s41, c41);
-    full_adder fa32(s22, pp[4][1], pp[5][1], s42, c42);
-    full_adder fa33(s23, pp[4][2], pp[5][2], s43, c43);
-    full_adder fa34(s24, pp[4][3], pp[5][3], s44, c44);
-    full_adder fa35(s25, pp[4][4], pp[5][4], s45, c45);
-    full_adder fa36(s31, pp[4][5], pp[5][5], s46, c46);
-    full_adder fa37(s32, pp[4][6], pp[5][6], s47, c47);
-    full_adder fa38(s33, pp[4][7], pp[5][7], s48, c48);
-
-    // Stage 4: Compress final two rows using Ripple Carry Adder
-    wire [15:0] row1 = {pp[7][7], pp[6][7], pp[6][6], pp[6][5], pp[6][4], pp[6][3], pp[6][2], pp[6][1], pp[6][0], s48, s47, s46, s45, s44, s43, s42};
-    wire [15:0] row2 = {1'b0,   pp[7][6], pp[7][5], pp[7][4], pp[7][3], pp[7][2], pp[7][1], pp[7][0], c48, c47, c46, c45, c44, c43, c42, c41};
-
-    assign P[1] = s11;
-    assign P[2] = s21;
-    assign P[3] = s22;
-    assign P[4] = s23;
-    assign P[5] = s24;
-    assign P[6] = s25;
-    assign P[7] = s31;
-
-    ripple_carry_adder_16bit final_adder (
-        .A(row1),
-        .B(row2),
-        .Sum(P[15:8])
+`timescale 1ns / 1ps
+module full_adder(
+    input a_in,
+    input b_in, c_in,
+    output sum,
+    output carry
     );
+	 
+	 assign sum = a_in ^ b_in ^ c_in ;
+	 assign carry = (a_in & b_in) | (b_in & c_in) | (c_in &a_in);
 
 endmodule
 
-// Half Adder Module
-module half_adder(input A, input B, output Sum, output Carry);
-    assign Sum = A ^ B;
-    assign Carry = A & B;
+
+`timescale 1ns / 1ps
+
+module half_adder(
+    input a_in,
+    input b_in,
+    output sum,
+    output carry
+    );
+	
+	 assign sum = a_in ^ b_in;
+	 assign carry = a_in & b_in;
+
 endmodule
 
-// Full Adder Module
-module full_adder(input A, input B, input Cin, output Sum, output Carry);
-    assign Sum = A ^ B ^ Cin;
-    assign Carry = (A & B) | (B & Cin) | (A & Cin);
-endmodule
-
-// 16-bit Ripple Carry Adder
-module ripple_carry_adder_16bit(
-    input  [15:0] A,
-    input  [15:0] B,
-    output [7:0]  Sum
-);
-    wire [15:0] carry;
-    assign carry[0] = 0;
-
-    genvar i;
-    generate
-        for (i = 0; i < 8; i = i + 1) begin : rca
-            full_adder fa (
-                .A(A[i]),
-                .B(B[i]),
-                .Cin(carry[i]),
-                .Sum(Sum[i]),
-                .Carry(carry[i+1])
-            );
-        end
-    endgenerate
-endmodule
